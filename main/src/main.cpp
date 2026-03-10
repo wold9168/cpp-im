@@ -2,9 +2,22 @@
 #include "main/version.h"
 #include <argparse/argparse.hpp>
 #include <cstdlib>
+#include <cstring>
+#include <netdb.h>
 #include <spdlog/spdlog.h>
+#include <sys/socket.h>
+#include <sys/types.h>
 
 bool verbose = false;
+
+#define CHECK_CALL(func, ...) check_error(#func, func(__VA_ARGS__))
+int check_error(const char *msg, int res) {
+  if (res == -1) {
+    spdlog::error("{}: {}", msg, strerror(res));
+    throw;
+  }
+  return res;
+}
 
 void argparse_initialize(argparse::ArgumentParser &program, const int &argc,
                          const pt2pt2char &argv) {
@@ -29,11 +42,15 @@ void argparse_initialize(argparse::ArgumentParser &program, const int &argc,
       .implicit_value(true)
       .nargs(0);
 
+  program.add_argument("-l", "--listen")
+      .help("specify the listen addr (default=127.0.0.1)")
+      .default_value("127.0.0.1")
+      .nargs(1);
+
   program.add_argument("-p", "--port")
       .help("specify the port (default=8080)")
       .default_value(8080)
-      .nargs(1)
-      .scan<'d', int>();
+      .nargs(1);
 
   try {
     program.parse_args(argc, argv);
@@ -43,6 +60,52 @@ void argparse_initialize(argparse::ArgumentParser &program, const int &argc,
     exit(EXIT_FAILURE);
   }
 }
+
+struct SockaddrFat {
+  struct sockaddr *m_addr;
+  socklen_t m_addrlen;
+};
+
+class AddrResolvedEntry {
+private:
+  struct addrinfo *m_cur = nullptr;
+
+public:
+  SockaddrFat get_addr() const { return {m_cur->ai_addr, m_cur->ai_addrlen}; }
+
+  int create_socket() const {
+    return CHECK_CALL(socket, m_cur->ai_family, m_cur->ai_socktype,
+                      m_cur->ai_protocol);
+  }
+  bool next_entry() {
+    m_cur = m_cur->ai_next;
+    return m_cur != nullptr;
+  }
+};
+
+class AddrResolver {
+private:
+  struct addrinfo *m_head = nullptr;
+
+public:
+  void resolve(const std::string &name, const std::string &srv) {
+    int gaierr = getaddrinfo(name.c_str(), srv.c_str(), NULL, &m_head);
+    if (gaierr != 0) {
+      spdlog::error("getaddrinfo: {}", gai_strerror(gaierr));
+      throw;
+    }
+  }
+  AddrResolvedEntry get_first_entry() { return {m_head}; }
+  AddrResolver() = default;
+  AddrResolver(AddrResolver &&that) : m_head(that.m_head) {
+    that.m_head = nullptr;
+  }
+  ~AddrResolver() {
+    if (m_head) {
+      freeaddrinfo(m_head);
+    }
+  }
+};
 
 int main(int argc, char **argv) {
   argparse::ArgumentParser program("main", APP_VERSION,
@@ -61,5 +124,14 @@ int main(int argc, char **argv) {
     spdlog::set_level(spdlog::level::debug);
     spdlog::debug("Verbose output enabled.");
   }
-  return 0;
+  auto addr = program.get<std::string>("--listen");
+  auto port = program.get<std::string>("--port");
+  AddrResolver ar;
+  ar.resolve(addr, port);
+  auto entry = ar.get_first_entry();
+  int sockfd = entry.create_socket();
+  SockaddrFat addrfat = entry.get_addr();
+
+  CHECK_CALL(bind, sockfd, addrfat.m_addr, addrfat.m_addrlen);
+  CHECK_CALL(listen, sockfd, SOMAXCONN);
 }
