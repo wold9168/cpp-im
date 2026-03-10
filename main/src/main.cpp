@@ -2,6 +2,7 @@
 #include "main/version.h"
 #include <argparse/argparse.hpp>
 #include <cstdlib>
+#include <spdlog/spdlog.h>
 
 bool verbose = false;
 
@@ -56,5 +57,9 @@ int main(int argc, char **argv) {
     exit(EXIT_SUCCESS);
   }
 
+  if (program["--verbose"] == true) {
+    spdlog::set_level(spdlog::level::debug);
+    spdlog::debug("Verbose output enabled.");
+  }
   return 0;
 }
