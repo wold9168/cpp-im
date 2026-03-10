@@ -27,6 +27,7 @@ configure_file(
 )
 
 FIND_PACKAGE(argparse REQUIRED)
+find_package(spdlog REQUIRED)
 
 include(CTest)
 enable_testing()
