@@ -1,4 +1,5 @@
 #include "main/main.hpp"
+#include "main/version.h"
 #include <argparse/argparse.hpp>
 #include <cstdlib>
 
@@ -31,7 +32,7 @@ void argparse_initialize(argparse::ArgumentParser &program, const int &argc,
 }
 
 int main(int argc, char **argv) {
-  argparse::ArgumentParser program("main", "1.0",
+  argparse::ArgumentParser program("main", APP_VERSION,
                                    argparse::default_arguments::none);
   argparse_initialize(program, argc, argv);
 
