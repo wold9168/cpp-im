@@ -33,4 +33,5 @@ include(CTest)
 enable_testing()
 
 add_subdirectory(main)
+add_subdirectory(req)
 #add_subdirectory(other_module)

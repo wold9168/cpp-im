@@ -8,4 +8,5 @@ target_include_directories(${artifact} PUBLIC include)
 target_link_libraries(${artifact} PUBLIC
     argparse::argparse
     spdlog::spdlog
+    req
 )
