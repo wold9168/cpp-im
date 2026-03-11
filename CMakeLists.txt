@@ -26,7 +26,7 @@ configure_file(
     ${CMAKE_SOURCE_DIR}/main/include/main/version.h
 )
 
-FIND_PACKAGE(argparse REQUIRED)
+find_package(argparse REQUIRED)
 find_package(spdlog REQUIRED)
 
 include(CTest)
