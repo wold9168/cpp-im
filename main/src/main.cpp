@@ -5,9 +5,11 @@
 #include <cstdlib>
 #include <cstring>
 #include <netdb.h>
+#include <req/parser.hpp>
 #include <spdlog/spdlog.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <unistd.h>
 
 bool verbose = false;
 
@@ -160,6 +162,31 @@ int main(int argc, char **argv) {
   CHECK_CALL(listen, listen_sockfd, SOMAXCONN);
   while (true) {
     SockAddrStorage client_addr;
-    CHECK_CALL(accept, listen_sockfd, &client_addr.m_addr, &client_addr.m_addrlen);
+    int peerfd = CHECK_CALL(accept, listen_sockfd, &client_addr.m_addr,
+                            &client_addr.m_addrlen);
+    char buf[4096];
+    size_t n = CHECK_CALL(read, peerfd, buf, sizeof(buf));
+
+    req::Parser parser;
+    req::HttpRequest request;
+    size_t consumed = parser.parse({buf, n}, request);
+
+    if (parser.has_error()) {
+      spdlog::error("Parse error: {}", parser.get_error());
+    } else if (consumed > 0) {
+      spdlog::info("Received {} request for {}",
+                   req::method_to_string(request.method), request.path);
+      if (!request.query.empty()) {
+        spdlog::debug("Query string: {}", request.query);
+      }
+      for (const auto &[key, value] : request.headers) {
+        spdlog::debug("Header: {} = {}", key, value);
+      }
+      if (!request.body.empty()) {
+        spdlog::debug("Body: {}", request.body);
+      }
+    }
+
+    close(peerfd);
   }
 }
