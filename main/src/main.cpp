@@ -1,6 +1,7 @@
 #include "main/main.hpp"
 #include "main/version.h"
 #include <argparse/argparse.hpp>
+#include <cstddef>
 #include <cstdlib>
 #include <cstring>
 #include <netdb.h>
@@ -12,6 +13,14 @@ bool verbose = false;
 
 #define CHECK_CALL(func, ...) check_error(#func, func(__VA_ARGS__))
 int check_error(const char *msg, int res) {
+  if (res == -1) {
+    spdlog::error("{}: {}", msg, strerror(res));
+    throw;
+  }
+  return res;
+}
+
+size_t check_error(const char *msg, ssize_t res) {
   if (res == -1) {
     spdlog::error("{}: {}", msg, strerror(res));
     throw;
@@ -66,11 +75,23 @@ struct SockaddrFat {
   socklen_t m_addrlen;
 };
 
+class SockAddrStorage {
+public:
+  union {
+    struct sockaddr m_addr;
+    struct sockaddr_storage m_addr_storage;
+  };
+  socklen_t m_addrlen = sizeof(struct sockaddr_storage);
+  operator SockaddrFat() { return {&m_addr, m_addrlen}; }
+};
+
 class AddrResolvedEntry {
 private:
   struct addrinfo *m_cur = nullptr;
 
 public:
+  AddrResolvedEntry(struct addrinfo *cur) : m_cur(cur) {};
+
   SockaddrFat get_addr() const { return {m_cur->ai_addr, m_cur->ai_addrlen}; }
 
   int create_socket() const {
@@ -80,6 +101,12 @@ public:
   bool next_entry() {
     m_cur = m_cur->ai_next;
     return m_cur != nullptr;
+  }
+  int create_socket_and_bind() const {
+    int sockfd = create_socket();
+    SockaddrFat addrfat = get_addr();
+    CHECK_CALL(bind, sockfd, addrfat.m_addr, addrfat.m_addrlen);
+    return sockfd;
   }
 };
 
@@ -129,9 +156,10 @@ int main(int argc, char **argv) {
   AddrResolver ar;
   ar.resolve(addr, port);
   auto entry = ar.get_first_entry();
-  int sockfd = entry.create_socket();
-  SockaddrFat addrfat = entry.get_addr();
-
-  CHECK_CALL(bind, sockfd, addrfat.m_addr, addrfat.m_addrlen);
-  CHECK_CALL(listen, sockfd, SOMAXCONN);
+  auto listen_sockfd = entry.create_socket_and_bind();
+  CHECK_CALL(listen, listen_sockfd, SOMAXCONN);
+  while (true) {
+    SockAddrStorage client_addr;
+    CHECK_CALL(accept, listen_sockfd, &client_addr.m_addr, &client_addr.m_addrlen);
+  }
 }
