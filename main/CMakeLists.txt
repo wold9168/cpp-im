@@ -5,7 +5,6 @@ add_executable(${artifact} ${dir})
 # add_library(${artifact} ${dir})
 target_include_directories(${artifact} PUBLIC include)
 
-find_package(argparse REQUIRED)
 target_link_libraries(${artifact} PUBLIC
     argparse::argparse
     spdlog::spdlog
